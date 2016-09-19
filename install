@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+
+BIN_DIR=${BIN_DIR:-/usr/local/bin}
+INSTALL=install
+
+echo "Installing depman-srv to $BIN_DIR/depman-srv..."
+$INSTALL -c bin/depman-srv $BIN_DIR/depman-srv
+echo "Installing depman-cli to $BIN_DIR/depman-cli..."
+$INSTALL -c bin/depman-cli $BIN_DIR/depman-cli
