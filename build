@@ -3,6 +3,7 @@ set -x
 set -e
 
 mkdir -p ./bin
+go get
 go build -o ./bin/depman-srv ./cmd/depman-srv
 go build -o ./bin/depman-cli ./cmd/depman-cli
 
