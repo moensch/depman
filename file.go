@@ -126,3 +126,28 @@ func (f *File) Stream(out io.Writer) error {
 func (f *File) FilePath() string {
 	return "/tmp/depman_files" + "/" + strconv.Itoa(f.Id)
 }
+
+func (fl *FileLink) Store() error {
+	var query string
+	if fl.Id == 0 {
+		//insert
+		query = `INSERT INTO filelinks (file_id, name)
+			VALUES
+			($1, $2)
+			RETURNING file_link_id
+			`
+	} else {
+		//update
+		query = `UPDATE filelinks SET file_id=$1, name=$2 WHERE file_link_id = $3`
+	}
+
+	var lastInsertId int
+	err := dbconn.QueryRow(query, fl.FileId, fl.Name).Scan(&lastInsertId)
+	if err != nil {
+		return err
+	}
+	log.Debugf("Stored as: %d", lastInsertId)
+	fl.Id = lastInsertId
+
+	return nil
+}

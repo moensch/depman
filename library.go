@@ -27,6 +27,31 @@ func (l Library) ToString() string {
 	return ""
 }
 
+func (l *Library) Store() error {
+	var query string
+	if l.Id == 0 {
+		//insert
+		query = `INSERT INTO libraries ( name)
+			VALUES
+			($1)
+			RETURNING library_id
+			`
+	} else {
+		//update
+		query = `UPDATE libraries SET name=$1 WHERE library_id = $2`
+	}
+
+	var lastInsertId int
+	err := dbconn.QueryRow(query, l.Name).Scan(&lastInsertId)
+	if err != nil {
+		return err
+	}
+	log.Debugf("Stored as: %d", lastInsertId)
+	l.Id = lastInsertId
+
+	return nil
+}
+
 func (l *Library) GetVersions() (LibraryVersions, error) {
 	versions, err := GetLibraryVersionsByLibraryId(l.Id)
 	return versions, err
@@ -151,6 +176,31 @@ func (lv *LibraryVersion) GetFilesByFilter(filter map[string]interface{}) (Files
 	default:
 		return files, err
 	}
+}
+
+func (lv *LibraryVersion) Store() error {
+	var query string
+	if lv.Id == 0 {
+		//insert
+		query = `INSERT INTO library_versions (library_id, version)
+			VALUES
+			($1, $2)
+			RETURNING library_version_id
+			`
+	} else {
+		//update
+		query = `UPDATE library_versions SET library_id=$1, version=$2 WHERE library_version_id = $3`
+	}
+
+	var lastInsertId int
+	err := dbconn.QueryRow(query, lv.LibraryId, lv.Version).Scan(&lastInsertId)
+	if err != nil {
+		return err
+	}
+	log.Debugf("Stored as: %d", lastInsertId)
+	lv.Id = lastInsertId
+
+	return nil
 }
 
 func GetLibraryVersionById(id int) (*LibraryVersion, error) {

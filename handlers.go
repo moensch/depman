@@ -315,6 +315,58 @@ func HandleGetLibraryFilesPlatformArchTypeNameLinks(w http.ResponseWriter, r *ht
 	SendResponse(w, r, links)
 }
 
+func HandleAddLink(w http.ResponseWriter, r *http.Request) {
+	reqVars := mux.Vars(r)
+	libname := reqVars["libname"]
+	libver := reqVars["libver"]
+	platform := reqVars["platform"]
+	arch := reqVars["arch"]
+	filetype := reqVars["filetype"]
+	filename := reqVars["filename"]
+	linkname := reqVars["linkname"]
+
+	log.WithFields(log.Fields{
+		"library":  libname,
+		"version":  libver,
+		"platform": platform,
+		"arch":     arch,
+		"filetype": filetype,
+		"filename": filename,
+		"linkname": linkname,
+	}).Info("File Download")
+
+	lv, err := getLibVer(libname, libver)
+
+	if err != nil {
+		SendErrorResponse(w, r, err)
+		return
+	}
+
+	files, err := lv.GetFilesByFilter(map[string]interface{}{
+		"platform": platform,
+		"arch":     arch,
+		"type":     filetype,
+		"name":     filename,
+	})
+
+	if err != nil {
+		SendErrorResponse(w, r, err)
+		return
+	}
+
+	fl := &FileLink{}
+	fl.FileId = files[0].Id
+	fl.Name = linkname
+	err = fl.Store()
+
+	if err != nil {
+		SendErrorResponse(w, r, err)
+	}
+
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, "Stored")
+}
+
 func HandleFileUpload(w http.ResponseWriter, r *http.Request) {
 	reqVars := mux.Vars(r)
 	libname := reqVars["libname"]
@@ -333,11 +385,36 @@ func HandleFileUpload(w http.ResponseWriter, r *http.Request) {
 		"filename": filename,
 	}).Info("File Download")
 
-	lv, err := getLibVer(libname, libver)
+	var lib *Library
+	var lv *LibraryVersion
+	lib, err := GetLibraryByName(libname)
 
-	if err != nil {
+	switch {
+	case err != nil && err == ErrNotFound:
+		// Create Library
+		lib.Name = libname
+		err = lib.Store()
+		if err != nil {
+			SendErrorResponse(w, r, err)
+		}
+		log.Debugf("Created new library with ID: %d", lib.Id)
+	case err != nil:
 		SendErrorResponse(w, r, err)
-		return
+	}
+
+	lv, err = lib.GetVersion(libver)
+	switch {
+	case err != nil && err == ErrNotFound:
+		// Create LibraryVersion
+		lv.LibraryId = lib.Id
+		lv.Version = libver
+		err = lv.Store()
+		if err != nil {
+			SendErrorResponse(w, r, err)
+		}
+		log.Debugf("Created new libver with ID: %d", lv.Id)
+	case err != nil:
+		SendErrorResponse(w, r, err)
 	}
 
 	files, err := lv.GetFilesByFilter(map[string]interface{}{
@@ -393,14 +470,14 @@ func HandleFileUpload(w http.ResponseWriter, r *http.Request) {
 			log.Debug("Finished reading")
 			break
 		}
-		log.Infof("Read %d bytes from request body", len)
+		log.Debugf("Read %d bytes from request body", len)
 		_ = bytes.Trim(buffer, "\x00")
 		len_w, err := localfile.Write(buffer[:len])
 		if err != nil {
 			SendErrorResponse(w, r, err)
 			return
 		}
-		log.Infof("Wrote %d bytes to file", len_w)
+		log.Debugf("Wrote %d bytes to file", len_w)
 	}
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprint(w, "Stored")
@@ -464,7 +541,7 @@ func HandleFileDownload(w http.ResponseWriter, r *http.Request) {
 			log.Debug("Finished reading")
 			break
 		}
-		log.Infof("Read %d bytes from disk", len)
+		log.Debugf("Read %d bytes from disk", len)
 		len_w, err := w.Write(buffer[:len])
 		if len_w != len {
 			SendErrorResponse(w, r, errors.New(fmt.Sprintf("Only wrote %d bytes, but should have written %d", len_w, len)))
@@ -474,7 +551,7 @@ func HandleFileDownload(w http.ResponseWriter, r *http.Request) {
 			SendErrorResponse(w, r, err)
 			return
 		}
-		log.Infof("Wrote %d bytes to http response", len_w)
+		log.Debugf("Wrote %d bytes to http response", len_w)
 	}
 }
 

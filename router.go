@@ -114,6 +114,12 @@ func RouteDefinitions() Routes {
 			HandleGetLibraryFilesPlatformArchTypeNameLinks,
 		},
 		Route{
+			"GetLibraryFilesPlatformArchTypeNameLinks",
+			"PUT",
+			"/lib/{libname}/versions/{libver}/files/{platform}/{arch}/{filetype}/{filename}/links/{linkname}",
+			HandleAddLink,
+		},
+		Route{
 			"FileDownload",
 			"GET",
 			"/lib/{libname}/versions/{libver}/files/{platform}/{arch}/{filetype}/{filename}/download",
