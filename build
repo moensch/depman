@@ -1,0 +1,5 @@
+#!/bin/bash
+
+mkdir -p ./bin
+go build -o ./bin/depman-srv ./cmd/depman-srv
+go build -o ./bin/depman-cli ./cmd/depman-cli

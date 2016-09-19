@@ -1,0 +1,9 @@
+postgres:
+  image: depman-postgres:9.3.14
+  volumes:
+   - /tmp/pgdata:/var/lib/postgresql/data
+  environment:
+    POSTGRES_PASSWORD: postgres
+    PGDATA: /var/lib/postgresql/data/pgdata
+  ports:
+   - "5432:5432"
