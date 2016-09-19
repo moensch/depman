@@ -5,7 +5,6 @@ import (
 	"fmt"
 	log "github.com/Sirupsen/logrus"
 	"io"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -19,6 +18,8 @@ type File struct {
 	Arch             string    `json:"arch"`
 	Created          time.Time `json:"created"`
 	Links            FileLinks `json:"file_links"`
+	libraryVersion   string
+	libraryName      string
 }
 
 func (f File) ToJsonString() (string, error) {
@@ -123,8 +124,29 @@ func (f *File) Stream(out io.Writer) error {
 	return nil
 }
 
+func (f *File) Load() error {
+	query := `SELECT lv.version,l.name
+		FROM files f
+		INNER JOIN library_versions lv ON f.library_version_id=lv.library_version_id
+		INNER JOIN libraries l ON lv.library_id=l.library_id
+		WHERE f.file_id = $1`
+
+	err := dbconn.QueryRow(query, f.Id).Scan(&f.libraryVersion, &f.libraryName)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (f *File) FilePath() string {
-	return "/tmp/depman_files" + "/" + strconv.Itoa(f.Id)
+	err := f.Load()
+	if err != nil {
+		// TODO - err handling
+		log.Error(err)
+	}
+	return fmt.Sprintf(StoreDir+"/%s/%s/%s/%s/%s/%s", f.libraryName, f.libraryVersion, f.Platform, f.Arch, f.Type, f.Name)
 }
 
 func (fl *FileLink) Store() error {

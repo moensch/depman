@@ -24,6 +24,5 @@ _testmain.go
 *.prof
 
 bin/*
-postgres/*
-lib/*
-include/*
+depman-lib/*
+depman-include/*

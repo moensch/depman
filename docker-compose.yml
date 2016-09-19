@@ -1,5 +1,14 @@
+depman:
+  build: .
+  volumes:
+   - ./rpmfiles:/tmp/depman_data
+  ports:
+   - "8082:8082"
+  links:
+   - postgres
+
 postgres:
-  image: depman-postgres:9.3.14
+  build: ./postgres
   volumes:
    - /tmp/pgdata:/var/lib/postgresql/data
   environment:

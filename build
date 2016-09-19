@@ -1,5 +1,13 @@
 #!/bin/bash
+set -x
+set -e
 
 mkdir -p ./bin
 go build -o ./bin/depman-srv ./cmd/depman-srv
 go build -o ./bin/depman-cli ./cmd/depman-cli
+
+if [[ -n "$1" && "$1" == "static" ]]; then
+  echo "Building static binary..."
+  CGO_ENABLED=0 GOOS=linux go build -ldflags "-s" -a -o ./bin/depman-srv-static -installsuffix cgo ./cmd/depman-srv
+  CGO_ENABLED=0 GOOS=linux go build -ldflags "-s" -a -o ./bin/depman-cli-static -installsuffix cgo ./cmd/depman-cli
+fi

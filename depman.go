@@ -11,7 +11,8 @@ import (
 )
 
 var (
-	dbconn *sql.DB
+	dbconn   *sql.DB
+	StoreDir string
 )
 
 var ErrNotFound = errors.New("Entry not found")
@@ -23,6 +24,7 @@ type DepMan struct {
 func NewServer() (*DepMan, error) {
 	depman := &DepMan{}
 	var err error
+	// TODO: Pull from config or some such
 	dbconn, err = sql.Open("postgres", "user=depman password=depman dbname=depman host=127.0.0.1 port=5432 sslmode=disable")
 	if err != nil {
 		log.Fatal(err)
@@ -32,8 +34,7 @@ func NewServer() (*DepMan, error) {
 	return depman, nil
 }
 
-func (c *DepMan) Run() {
-	listenAddr := fmt.Sprintf("%s:%d", "0.0.0.0", 8082)
+func (c *DepMan) Run(listenAddr string) {
 	log.Infof("Listening on: %s", listenAddr)
 	log.Fatal(http.ListenAndServe(listenAddr, c.Router))
 }

@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -333,7 +334,7 @@ func HandleAddLink(w http.ResponseWriter, r *http.Request) {
 		"filetype": filetype,
 		"filename": filename,
 		"linkname": linkname,
-	}).Info("File Download")
+	}).Info("Add Link")
 
 	lv, err := getLibVer(libname, libver)
 
@@ -361,6 +362,7 @@ func HandleAddLink(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		SendErrorResponse(w, r, err)
+		return
 	}
 
 	w.WriteHeader(http.StatusOK)
@@ -383,7 +385,7 @@ func HandleFileUpload(w http.ResponseWriter, r *http.Request) {
 		"arch":     arch,
 		"filetype": filetype,
 		"filename": filename,
-	}).Info("File Download")
+	}).Info("File Upload")
 
 	var lib *Library
 	var lv *LibraryVersion
@@ -411,6 +413,7 @@ func HandleFileUpload(w http.ResponseWriter, r *http.Request) {
 		err = lv.Store()
 		if err != nil {
 			SendErrorResponse(w, r, err)
+			return
 		}
 		log.Debugf("Created new libver with ID: %d", lv.Id)
 	case err != nil:
@@ -430,7 +433,7 @@ func HandleFileUpload(w http.ResponseWriter, r *http.Request) {
 	case err == ErrNotFound:
 		// Create the file in the database
 		log.Debug("File not found, storing")
-		file = File{0, lv.Id, filename, filetype, platform, arch, time.Now(), FileLinks{}}
+		file = File{0, lv.Id, filename, filetype, platform, arch, time.Now(), FileLinks{}, "", ""}
 		err = file.Store()
 		if err != nil {
 			SendErrorResponse(w, r, err)
@@ -450,6 +453,12 @@ func HandleFileUpload(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		log.Debug("File exists - removing")
 		os.Remove(file.FilePath())
+	}
+
+	err = os.MkdirAll(filepath.Dir(file.FilePath()), 0700)
+	if err != nil {
+		SendErrorResponse(w, r, err)
+		return
 	}
 
 	localfile, err := os.OpenFile(file.FilePath(), os.O_WRONLY|os.O_CREATE, 0600)
@@ -580,7 +589,7 @@ func HandlePutLibraryFilesPlatformArchTypeName(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	file := &File{0, lv.Id, filename, filetype, platform, arch, time.Now(), FileLinks{}}
+	file := &File{0, lv.Id, filename, filetype, platform, arch, time.Now(), FileLinks{}, "", ""}
 
 	err = file.Store()
 

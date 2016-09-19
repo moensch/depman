@@ -33,42 +33,54 @@ func init() {
 	flag.StringVar(&depmanArch, "a", "", "Architecture (e.g. 'x86_64'. Default: uname -m)")
 	flag.StringVar(&depmanPlatform, "p", "", "Platform (e.g. 'el6'. Default: Read from rpm --eval %dist)")
 	flag.StringVar(&depmanUrl, "s", os.Getenv("DEPMAN_URL"), "Server URL")
-	flag.StringVar(&includeDir, "i", "include/", "Include dir")
-	flag.StringVar(&libDir, "l", "lib/", "Lib dir")
+	flag.StringVar(&includeDir, "i", "depman-include/", "Include dir")
+	flag.StringVar(&libDir, "l", "depman-lib/", "Lib dir")
 	flag.StringVar(&logLevel, "d", "info", "Log level (debug|info|warn|error|fatal)")
 	flag.StringVar(&depFile, "f", "depman_deps.txt", "Dependency file")
 }
 
 func getArch() string {
-	out, err := exec.Command("/usr/bin/uname", "-m").Output()
-	if err != nil {
-		log.Fatalf("ERROR: %s", err)
+	for _, uname := range []string{"/usr/bin/uname", "/bin/uname"} {
+		_, err := os.Stat(uname)
+		if err != nil {
+			continue
+		}
+		out, err := exec.Command(uname, "-m").Output()
+		if err != nil {
+			log.Fatalf("ERROR: %s", err)
+		}
+
+		re := regexp.MustCompile("(x86_64|i386)")
+
+		matches := re.FindAllStringSubmatch(string(out), -1)
+		if len(matches) == 0 {
+			return ""
+		}
+
+		return matches[0][1]
 	}
 
-	re := regexp.MustCompile("(x86_64|i386)")
-
-	matches := re.FindAllStringSubmatch(string(out), -1)
-	if len(matches) == 0 {
-		return ""
-	}
-
-	return matches[0][1]
+	return ""
 }
 
 func getPlatform() string {
-	out, err := exec.Command("/usr/bin/rpm", "--eval", "%dist").Output()
-	if err != nil {
-		log.Fatalf("ERROR: %s", err)
+	for _, rpm := range []string{"/usr/bin/rpm", "/bin/rpm"} {
+		out, err := exec.Command(rpm, "--eval", "%dist").Output()
+		if err != nil {
+			log.Fatalf("ERROR: %s", err)
+		}
+
+		re := regexp.MustCompile("(el5|el6|el7)")
+
+		matches := re.FindAllStringSubmatch(string(out), -1)
+		if len(matches) == 0 {
+			return ""
+		}
+
+		return matches[0][1]
 	}
 
-	re := regexp.MustCompile("(el5|el6|el7)")
-
-	matches := re.FindAllStringSubmatch(string(out), -1)
-	if len(matches) == 0 {
-		return ""
-	}
-
-	return matches[0][1]
+	return ""
 }
 
 func main() {
@@ -84,23 +96,17 @@ func main() {
 		depmanPlatform = getPlatform()
 	}
 
+	if depmanArch == "" {
+		log.Fatal("Cannot determine architecture - use -a to provide it")
+	}
+
+	if depmanPlatform == "" {
+		log.Fatal("Cannot determine platform - use -p to provide it")
+	}
+
 	includeDir = strings.TrimSuffix(includeDir, "/")
 	libDir = strings.TrimSuffix(libDir, "/")
 	depmanUrl = strings.TrimSuffix(depmanUrl, "/")
-	log.Infof("Architecture: %s", depmanArch)
-	log.Infof("Platform    : %s", depmanPlatform)
-	log.Infof("Include Dir : %s", includeDir)
-	log.Infof("Library Dir : %s", libDir)
-	log.Infof("Dependencies: %s", depFile)
-
-	for _, dir := range []string{includeDir, libDir} {
-		if _, err := os.Stat(dir); os.IsNotExist(err) {
-			err = os.MkdirAll(dir, 0755)
-			if err != nil {
-				log.Fatalf("ERROR: %s")
-			}
-		}
-	}
 
 	if flag.NArg() < 1 {
 		log.Warnf("Not enough parameters")
@@ -109,6 +115,22 @@ func main() {
 	}
 
 	operation := flag.Arg(0)
+	log.Infof("Architecture: %s", depmanArch)
+	log.Infof("Platform    : %s", depmanPlatform)
+	log.Infof("Include Dir : %s", includeDir)
+	log.Infof("Library Dir : %s", libDir)
+	log.Infof("Dependencies: %s", depFile)
+
+	if operation == "get" {
+		for _, dir := range []string{includeDir, libDir} {
+			if _, err := os.Stat(dir); os.IsNotExist(err) {
+				err = os.MkdirAll(dir, 0755)
+				if err != nil {
+					log.Fatalf("ERROR: %s")
+				}
+			}
+		}
+	}
 
 	httpClient = &http.Client{}
 
@@ -122,42 +144,53 @@ func main() {
 		makeFlags(libnames)
 	case "upload":
 		log.Infof("Uploading...")
-		if flag.NArg() < 5 {
+		if flag.NArg() < 4 {
 			log.Warnf("Not enough parameters")
 			flag.Usage()
 			os.Exit(1)
 		}
 		libname := flag.Arg(1)
 		libver := flag.Arg(2)
-		filetype := flag.Arg(3)
 
-		files := flag.Args()[4:]
+		files := flag.Args()[3:]
 		log.Infof("Library: %s", libname)
 		log.Infof("Version: %s", libver)
-		log.Infof("Type   : %s", filetype)
-		for _, f := range files {
-			log.Infof("  File: %s", f)
-		}
 
-		err := uploadFiles(libname, libver, filetype, files)
+		err := uploadFiles(libname, libver, files)
 		if err != nil {
 			log.Fatalf("ERROR: %s", err)
 		}
 	}
 }
 
-func uploadFiles(libname string, libver string, filetype string, files []string) error {
-	url_tpl := fmt.Sprintf("/lib/%s/versions/%s/files/%s/%s/%s/%%s/%%s", libname, libver, depmanPlatform, depmanArch, filetype)
+func getFileType(path string) (string, error) {
+	log.Debugf("Determining file type for %s (ext: '%s')", path, filepath.Ext(path))
+	switch {
+	case filepath.Ext(path) == ".h":
+		fallthrough
+	case filepath.Ext(path) == ".hpp":
+		return "header", nil
+	case filepath.Ext(path) == ".a":
+		return "archive", nil
+	case strings.Contains(filepath.Base(path), ".so"):
+		return "shared", nil
+	default:
+		return "", errors.New(fmt.Sprintf("Cannot determine file type for %s using extension %s", path, filepath.Ext(path)))
+	}
+}
+
+func uploadFiles(libname string, libver string, files []string) error {
+	url_tpl := fmt.Sprintf("/lib/%s/versions/%s/files/%s/%s/%%s/%%s/%%s", libname, libver, depmanPlatform, depmanArch)
 	log.Debugf("URL: %s", url_tpl)
 
 	//links := make([]string, 0)
 
 	links := make(map[string][]string)
 
-	uploaded_files := make([]string, 0)
+	uploaded_files := make([][]string, 0)
 	for _, f := range files {
 		filename := filepath.Base(f)
-		log.Infof("Filepath: %s", f)
+		log.Infof("Considering file: %s", f)
 		info, err := os.Lstat(f)
 		if err != nil {
 			return err
@@ -166,17 +199,23 @@ func uploadFiles(libname string, libver string, filetype string, files []string)
 		switch {
 		case info.Mode().IsRegular():
 			log.Infof("  File %s is a regular file", filename)
-
-			err := uploadFile(f, fmt.Sprintf(url_tpl, filename, "upload"))
+			filetype, err := getFileType(f)
+			if err != nil {
+				log.Warn(err)
+				continue
+			}
+			err = uploadFile(f, fmt.Sprintf(url_tpl, filetype, filename, "upload"))
 			if err != nil {
 				return err
 			}
-			uploaded_files = append(uploaded_files, filename)
+
+			log.Infof("  Successfully uploaded %s (type: %s)", filename, filetype)
+			uploaded_files = append(uploaded_files, []string{filename, filetype})
 		case info.Mode()&os.ModeSymlink == os.ModeSymlink:
 			//target, _ := os.Readlink(f)
 			target, _ := filepath.EvalSymlinks(f)
 			targetfile := filepath.Base(target)
-			log.Infof("  File %s is a symlink to %s", f, targetfile)
+			log.Infof("  File %s is a symlink to %s", filename, targetfile)
 
 			if _, ok := links[targetfile]; ok {
 				// append
@@ -188,25 +227,26 @@ func uploadFiles(libname string, libver string, filetype string, files []string)
 		}
 	}
 
-	for target, linknames := range links {
-		log.Infof("File %s has symlinks pointing to it", target)
+	for _, f := range uploaded_files {
+		if _, ok := links[f[0]]; ok {
+			log.Infof("Processing symlinks for: %s", f[0])
+			for _, linkname := range links[f[0]] {
+				log.Infof("  Linkname: %s", linkname)
+				path := fmt.Sprintf(url_tpl+"/%s", f[1], f[0], "links", linkname)
+				log.Debugf("  Linkpath: %s", path)
 
-		for _, linkname := range linknames {
-			log.Infof("  Linkname: %s", linkname)
-			path := fmt.Sprintf(url_tpl+"/%s", target, "links", linkname)
-			log.Debugf("  Linkpath: %s", path)
-
-			req, err := http.NewRequest("PUT", strings.Join([]string{depmanUrl, path}, ""), nil)
-			if err != nil {
-				return err
-			}
-			resp, err := httpClient.Do(req)
-			defer resp.Body.Close()
-			if err != nil {
-				return err
-			}
-			if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-				return errors.New(fmt.Sprintf("Http error: %d", resp.StatusCode))
+				req, err := http.NewRequest("PUT", strings.Join([]string{depmanUrl, path}, ""), nil)
+				if err != nil {
+					return err
+				}
+				resp, err := httpClient.Do(req)
+				defer resp.Body.Close()
+				if err != nil {
+					return err
+				}
+				if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+					return errors.New(fmt.Sprintf("Http error: %d", resp.StatusCode))
+				}
 			}
 		}
 	}
@@ -239,8 +279,6 @@ func uploadFile(localfile string, path string) error {
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return errors.New(fmt.Sprintf("Http error: %d", resp.StatusCode))
 	}
-
-	log.Infof("Successfully uploaded %s", localfile)
 
 	return nil
 }
