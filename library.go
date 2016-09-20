@@ -10,6 +10,7 @@ import (
 type Library struct {
 	Id      int       `json:"library_id"`
 	Name    string    `json:"name"`
+	Ns      string    `json:"ns"`
 	Created time.Time `json:"created"`
 }
 
@@ -31,18 +32,18 @@ func (l *Library) Store() error {
 	var query string
 	if l.Id == 0 {
 		//insert
-		query = `INSERT INTO libraries ( name)
+		query = `INSERT INTO libraries (name, ns)
 			VALUES
-			($1)
+			($1, $2)
 			RETURNING library_id
 			`
 	} else {
 		//update
-		query = `UPDATE libraries SET name=$1 WHERE library_id = $2`
+		query = `UPDATE libraries SET name=$1, ns=$2 WHERE library_id = $3`
 	}
 
 	var lastInsertId int
-	err := dbconn.QueryRow(query, l.Name).Scan(&lastInsertId)
+	err := dbconn.QueryRow(query, l.Name, l.Ns).Scan(&lastInsertId)
 	if err != nil {
 		return err
 	}
@@ -71,19 +72,15 @@ func (l *Library) GetLatestVersion() (*LibraryVersion, error) {
 	return lv, err
 }
 
-func GetLibraryById(id int) (*Library, error) {
-	l := &Library{}
-	return l, nil
-}
-
 func GetLibraryByName(name string) (*Library, error) {
 	l := &Library{}
 
-	query := "SELECT library_id, name, created FROM libraries WHERE name = $1"
+	query := "SELECT library_id, name, ns, created FROM libraries WHERE name = $1"
 
 	err := dbconn.QueryRow(query, name).Scan(
 		&l.Id,
 		&l.Name,
+		&l.Ns,
 		&l.Created)
 
 	switch {
@@ -233,21 +230,6 @@ func (lv *LibraryVersion) Store() error {
 	lv.Id = lastInsertId
 
 	return nil
-}
-
-func GetLibraryVersionById(id int) (*LibraryVersion, error) {
-	lv := &LibraryVersion{}
-	return lv, nil
-}
-
-func GetLibraryVersionByIdVersion(id int, version string) (*LibraryVersion, error) {
-	lv := &LibraryVersion{}
-	return lv, nil
-}
-
-func GetLibraryVersionByNameVersion(libname string, version string) (*LibraryVersion, error) {
-	lv := &LibraryVersion{}
-	return lv, nil
 }
 
 type LibraryVersions []LibraryVersion

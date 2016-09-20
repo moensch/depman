@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	log "github.com/Sirupsen/logrus"
-	"io"
 	"strings"
 	"time"
 )
@@ -117,10 +116,6 @@ func (f *File) Store() error {
 	log.Debugf("Stored as: %d", lastInsertId)
 	f.Id = lastInsertId
 
-	return nil
-}
-
-func (f *File) Stream(out io.Writer) error {
 	return nil
 }
 

@@ -20,6 +20,7 @@ import (
 
 var (
 	depmanUrl      string
+	depmanNs       string
 	depmanPlatform string
 	depmanArch     string
 	logLevel       string
@@ -30,6 +31,7 @@ var (
 )
 
 func init() {
+	flag.StringVar(&depmanNs, "n", "", "Name space")
 	flag.StringVar(&depmanArch, "a", "", "Architecture (e.g. 'x86_64'. Default: uname -m)")
 	flag.StringVar(&depmanPlatform, "p", "", "Platform (e.g. 'el6'. Default: Read from rpm --eval %dist)")
 	flag.StringVar(&depmanUrl, "s", os.Getenv("DEPMAN_URL"), "Server URL")
@@ -39,7 +41,7 @@ func init() {
 	flag.StringVar(&depFile, "f", "depman_deps.txt", "Dependency file")
 }
 
-func getArch() string {
+func getArch() (string, error) {
 	for _, uname := range []string{"/usr/bin/uname", "/bin/uname"} {
 		_, err := os.Stat(uname)
 		if err != nil {
@@ -54,16 +56,16 @@ func getArch() string {
 
 		matches := re.FindAllStringSubmatch(string(out), -1)
 		if len(matches) == 0 {
-			return ""
+			return "", fmt.Errorf("Cannot find arch in string '%s' returned by uname -m", out)
 		}
 
-		return matches[0][1]
+		return matches[0][1], nil
 	}
 
-	return ""
+	return "", errors.New("Cannot determine architecture - use -a flag")
 }
 
-func getPlatform() string {
+func getPlatform() (string, error) {
 	for _, rpm := range []string{"/usr/bin/rpm", "/bin/rpm"} {
 		out, err := exec.Command(rpm, "--eval", "%dist").Output()
 		if err != nil {
@@ -74,13 +76,13 @@ func getPlatform() string {
 
 		matches := re.FindAllStringSubmatch(string(out), -1)
 		if len(matches) == 0 {
-			return ""
+			return "", fmt.Errorf("Cannot find platform in string '%s' returned by rpm --eval %%dist", out)
 		}
 
-		return matches[0][1]
+		return matches[0][1], nil
 	}
 
-	return ""
+	return "", errors.New("Cannot determine platform - use -a flag")
 }
 
 func main() {
@@ -88,20 +90,16 @@ func main() {
 
 	lvl, _ := log.ParseLevel(logLevel)
 	log.SetLevel(lvl)
-
+	var err error
 	if depmanArch == "" {
-		depmanArch = getArch()
+		if depmanArch, err = getArch(); err != nil {
+			log.Fatal(err)
+		}
 	}
 	if depmanPlatform == "" {
-		depmanPlatform = getPlatform()
-	}
-
-	if depmanArch == "" {
-		log.Fatal("Cannot determine architecture - use -a to provide it")
-	}
-
-	if depmanPlatform == "" {
-		log.Fatal("Cannot determine platform - use -p to provide it")
+		if depmanPlatform, err = getPlatform(); err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	includeDir = strings.TrimSuffix(includeDir, "/")
@@ -180,7 +178,7 @@ func getFileType(path string) (string, error) {
 }
 
 func uploadFiles(libname string, libver string, files []string) error {
-	url_tpl := fmt.Sprintf("/lib/%s/versions/%s/files/%s/%s/%%s/%%s/%%s", libname, libver, depmanPlatform, depmanArch)
+	url_tpl := fmt.Sprintf("/v1/lib/%s/%s/versions/%s/files/%s/%s/%%s/%%s/%%s", "ns", libname, libver, depmanPlatform, depmanArch)
 	log.Debugf("URL: %s", url_tpl)
 
 	//links := make([]string, 0)
@@ -382,7 +380,7 @@ func makeFlags(libnames []string) {
 }
 
 func downloadLib(libname string, libver string, wanted string, include_subdir string) error {
-	body, err := GETRequestJSON(fmt.Sprintf("/lib/%s/versions/%s/files/%s/%s", libname, libver, depmanPlatform, depmanArch))
+	body, err := GETRequestJSON(fmt.Sprintf("/v1/lib/%s/%s/versions/%s/files/%s/%s", "ns", libname, libver, depmanPlatform, depmanArch))
 
 	if err != nil {
 		log.Fatalf("ERROR: %s", err)
@@ -461,8 +459,8 @@ func downloadFile(libname string, libver string, f depman.File, dir string, mode
 		}
 	}
 
-	path := fmt.Sprintf("/lib/%s/versions/%s/files/%s/%s/%s/%s/download",
-		libname, libver, depmanPlatform, depmanArch, f.Type, f.Name)
+	path := fmt.Sprintf("/v1/lib/%s/%s/versions/%s/files/%s/%s/%s/%s/download",
+		"ns", libname, libver, depmanPlatform, depmanArch, f.Type, f.Name)
 
 	log.Infof("Download URL: %s", path)
 

@@ -23,11 +23,11 @@ func HandleListLibraries(w http.ResponseWriter, r *http.Request) {
 
 func HandleGetLibrary(w http.ResponseWriter, r *http.Request) {
 	reqVars := mux.Vars(r)
-	libname := reqVars["libname"]
+	logRequest(reqVars, "Get Library")
 
-	log.Debugf("Load library: %s", libname)
+	log.Debugf("Load library: %s", reqVars["libname"])
 
-	lib, err := GetLibraryByName(libname)
+	lib, err := GetLibraryByName(reqVars["libname"])
 
 	if err != nil {
 		SendErrorResponse(w, r, err)
@@ -37,15 +37,19 @@ func HandleGetLibrary(w http.ResponseWriter, r *http.Request) {
 	SendResponse(w, r, lib)
 }
 
+func logRequest(muxvars map[string]string, msg string) {
+	f := log.Fields{}
+	for k, v := range muxvars {
+		f[k] = v
+	}
+	log.WithFields(f).Info(msg)
+}
+
 func HandleGetLibraryVersions(w http.ResponseWriter, r *http.Request) {
 	reqVars := mux.Vars(r)
-	libname := reqVars["libname"]
+	logRequest(reqVars, "Listing versions by libname")
 
-	log.WithFields(log.Fields{
-		"library": libname,
-	}).Info("Listing versions by name")
-
-	lib, err := GetLibraryByName(libname)
+	lib, err := GetLibraryByName(reqVars["libname"])
 
 	if err != nil {
 		SendErrorResponse(w, r, err)
@@ -82,15 +86,9 @@ func getLibVer(libname string, libver string) (*LibraryVersion, error) {
 
 func HandleGetLibraryVersion(w http.ResponseWriter, r *http.Request) {
 	reqVars := mux.Vars(r)
-	libname := reqVars["libname"]
-	libver := reqVars["libver"]
+	logRequest(reqVars, "Get Library Version")
 
-	log.WithFields(log.Fields{
-		"library": libname,
-		"version": libver,
-	}).Info("Getting library version")
-
-	lv, err := getLibVer(libname, libver)
+	lv, err := getLibVer(reqVars["libname"], reqVars["libver"])
 
 	if err != nil {
 		SendErrorResponse(w, r, err)
@@ -102,15 +100,9 @@ func HandleGetLibraryVersion(w http.ResponseWriter, r *http.Request) {
 
 func HandleGetLibraryFiles(w http.ResponseWriter, r *http.Request) {
 	reqVars := mux.Vars(r)
-	libname := reqVars["libname"]
-	libver := reqVars["libver"]
+	logRequest(reqVars, "List Files")
 
-	log.WithFields(log.Fields{
-		"library": libname,
-		"version": libver,
-	}).Info("Listing files by name")
-
-	lv, err := getLibVer(libname, libver)
+	lv, err := getLibVer(reqVars["libname"], reqVars["libver"])
 
 	if err != nil {
 		SendErrorResponse(w, r, err)
@@ -129,17 +121,9 @@ func HandleGetLibraryFiles(w http.ResponseWriter, r *http.Request) {
 
 func HandleGetLibraryFilesPlatform(w http.ResponseWriter, r *http.Request) {
 	reqVars := mux.Vars(r)
-	libname := reqVars["libname"]
-	libver := reqVars["libver"]
-	platform := reqVars["platform"]
+	logRequest(reqVars, "List Files")
 
-	log.WithFields(log.Fields{
-		"library":  libname,
-		"version":  libver,
-		"platform": platform,
-	}).Info("Listing files by platform")
-
-	lv, err := getLibVer(libname, libver)
+	lv, err := getLibVer(reqVars["libname"], reqVars["libver"])
 
 	if err != nil {
 		SendErrorResponse(w, r, err)
@@ -147,7 +131,7 @@ func HandleGetLibraryFilesPlatform(w http.ResponseWriter, r *http.Request) {
 	}
 
 	files, err := lv.GetFilesByFilter(map[string]interface{}{
-		"platform": platform,
+		"platform": reqVars["platform"],
 	})
 
 	if err != nil {
@@ -160,19 +144,9 @@ func HandleGetLibraryFilesPlatform(w http.ResponseWriter, r *http.Request) {
 
 func HandleGetLibraryFilesPlatformArch(w http.ResponseWriter, r *http.Request) {
 	reqVars := mux.Vars(r)
-	libname := reqVars["libname"]
-	libver := reqVars["libver"]
-	platform := reqVars["platform"]
-	arch := reqVars["arch"]
+	logRequest(reqVars, "List Files")
 
-	log.WithFields(log.Fields{
-		"library":  libname,
-		"version":  libver,
-		"platform": platform,
-		"arch":     arch,
-	}).Info("Listing files by platform, arch")
-
-	lv, err := getLibVer(libname, libver)
+	lv, err := getLibVer(reqVars["libname"], reqVars["libver"])
 
 	if err != nil {
 		SendErrorResponse(w, r, err)
@@ -180,8 +154,8 @@ func HandleGetLibraryFilesPlatformArch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	files, err := lv.GetFilesByFilter(map[string]interface{}{
-		"platform": platform,
-		"arch":     arch,
+		"platform": reqVars["platform"],
+		"arch":     reqVars["arch"],
 	})
 
 	if err != nil {
@@ -194,21 +168,9 @@ func HandleGetLibraryFilesPlatformArch(w http.ResponseWriter, r *http.Request) {
 
 func HandleGetLibraryFilesPlatformArchType(w http.ResponseWriter, r *http.Request) {
 	reqVars := mux.Vars(r)
-	libname := reqVars["libname"]
-	libver := reqVars["libver"]
-	platform := reqVars["platform"]
-	arch := reqVars["arch"]
-	filetype := reqVars["filetype"]
+	logRequest(reqVars, "List Files")
 
-	log.WithFields(log.Fields{
-		"library":  libname,
-		"version":  libver,
-		"platform": platform,
-		"arch":     arch,
-		"filetype": filetype,
-	}).Info("Listing files by platform, arch, filetype")
-
-	lv, err := getLibVer(libname, libver)
+	lv, err := getLibVer(reqVars["libname"], reqVars["libver"])
 
 	if err != nil {
 		SendErrorResponse(w, r, err)
@@ -216,9 +178,9 @@ func HandleGetLibraryFilesPlatformArchType(w http.ResponseWriter, r *http.Reques
 	}
 
 	files, err := lv.GetFilesByFilter(map[string]interface{}{
-		"platform": platform,
-		"arch":     arch,
-		"type":     filetype,
+		"platform": reqVars["platform"],
+		"arch":     reqVars["arch"],
+		"type":     reqVars["filetype"],
 	})
 
 	if err != nil {
@@ -231,23 +193,9 @@ func HandleGetLibraryFilesPlatformArchType(w http.ResponseWriter, r *http.Reques
 
 func HandleGetLibraryFilesPlatformArchTypeName(w http.ResponseWriter, r *http.Request) {
 	reqVars := mux.Vars(r)
-	libname := reqVars["libname"]
-	libver := reqVars["libver"]
-	platform := reqVars["platform"]
-	arch := reqVars["arch"]
-	filetype := reqVars["filetype"]
-	filename := reqVars["filename"]
+	logRequest(reqVars, "List Files")
 
-	log.WithFields(log.Fields{
-		"library":  libname,
-		"version":  libver,
-		"platform": platform,
-		"arch":     arch,
-		"filetype": filetype,
-		"filename": filename,
-	}).Info("Listing files by platform, arch, filetype, filename")
-
-	lv, err := getLibVer(libname, libver)
+	lv, err := getLibVer(reqVars["libname"], reqVars["libver"])
 
 	if err != nil {
 		SendErrorResponse(w, r, err)
@@ -255,10 +203,10 @@ func HandleGetLibraryFilesPlatformArchTypeName(w http.ResponseWriter, r *http.Re
 	}
 
 	files, err := lv.GetFilesByFilter(map[string]interface{}{
-		"platform": platform,
-		"arch":     arch,
-		"type":     filetype,
-		"name":     filename,
+		"platform": reqVars["platform"],
+		"arch":     reqVars["arch"],
+		"type":     reqVars["filetype"],
+		"name":     reqVars["filename"],
 	})
 
 	if err != nil {
@@ -271,23 +219,9 @@ func HandleGetLibraryFilesPlatformArchTypeName(w http.ResponseWriter, r *http.Re
 
 func HandleGetLibraryFilesPlatformArchTypeNameLinks(w http.ResponseWriter, r *http.Request) {
 	reqVars := mux.Vars(r)
-	libname := reqVars["libname"]
-	libver := reqVars["libver"]
-	platform := reqVars["platform"]
-	arch := reqVars["arch"]
-	filetype := reqVars["filetype"]
-	filename := reqVars["filename"]
+	logRequest(reqVars, "Get Links")
 
-	log.WithFields(log.Fields{
-		"library":  libname,
-		"version":  libver,
-		"platform": platform,
-		"arch":     arch,
-		"filetype": filetype,
-		"filename": filename,
-	}).Info("Listing links for file by platform, arch, filetype, filename")
-
-	lv, err := getLibVer(libname, libver)
+	lv, err := getLibVer(reqVars["libname"], reqVars["libver"])
 
 	if err != nil {
 		SendErrorResponse(w, r, err)
@@ -295,10 +229,10 @@ func HandleGetLibraryFilesPlatformArchTypeNameLinks(w http.ResponseWriter, r *ht
 	}
 
 	files, err := lv.GetFilesByFilter(map[string]interface{}{
-		"platform": platform,
-		"arch":     arch,
-		"type":     filetype,
-		"name":     filename,
+		"platform": reqVars["platform"],
+		"arch":     reqVars["arch"],
+		"type":     reqVars["filetype"],
+		"name":     reqVars["filename"],
 	})
 
 	if err != nil {
@@ -318,25 +252,9 @@ func HandleGetLibraryFilesPlatformArchTypeNameLinks(w http.ResponseWriter, r *ht
 
 func HandleAddLink(w http.ResponseWriter, r *http.Request) {
 	reqVars := mux.Vars(r)
-	libname := reqVars["libname"]
-	libver := reqVars["libver"]
-	platform := reqVars["platform"]
-	arch := reqVars["arch"]
-	filetype := reqVars["filetype"]
-	filename := reqVars["filename"]
-	linkname := reqVars["linkname"]
+	logRequest(reqVars, "Add Link")
 
-	log.WithFields(log.Fields{
-		"library":  libname,
-		"version":  libver,
-		"platform": platform,
-		"arch":     arch,
-		"filetype": filetype,
-		"filename": filename,
-		"linkname": linkname,
-	}).Info("Add Link")
-
-	lv, err := getLibVer(libname, libver)
+	lv, err := getLibVer(reqVars["libname"], reqVars["libver"])
 
 	if err != nil {
 		SendErrorResponse(w, r, err)
@@ -344,10 +262,10 @@ func HandleAddLink(w http.ResponseWriter, r *http.Request) {
 	}
 
 	files, err := lv.GetFilesByFilter(map[string]interface{}{
-		"platform": platform,
-		"arch":     arch,
-		"type":     filetype,
-		"name":     filename,
+		"platform": reqVars["platform"],
+		"arch":     reqVars["arch"],
+		"type":     reqVars["filetype"],
+		"name":     reqVars["filename"],
 	})
 
 	if err != nil {
@@ -357,7 +275,7 @@ func HandleAddLink(w http.ResponseWriter, r *http.Request) {
 
 	fl := &FileLink{}
 	fl.FileId = files[0].Id
-	fl.Name = linkname
+	fl.Name = reqVars["linkname"]
 	err = fl.Store()
 
 	if err != nil {
@@ -371,30 +289,16 @@ func HandleAddLink(w http.ResponseWriter, r *http.Request) {
 
 func HandleFileUpload(w http.ResponseWriter, r *http.Request) {
 	reqVars := mux.Vars(r)
-	libname := reqVars["libname"]
-	libver := reqVars["libver"]
-	platform := reqVars["platform"]
-	arch := reqVars["arch"]
-	filetype := reqVars["filetype"]
-	filename := reqVars["filename"]
-
-	log.WithFields(log.Fields{
-		"library":  libname,
-		"version":  libver,
-		"platform": platform,
-		"arch":     arch,
-		"filetype": filetype,
-		"filename": filename,
-	}).Info("File Upload")
+	logRequest(reqVars, "File Upload")
 
 	var lib *Library
 	var lv *LibraryVersion
-	lib, err := GetLibraryByName(libname)
+	lib, err := GetLibraryByName(reqVars["libname"])
 
 	switch {
 	case err != nil && err == ErrNotFound:
 		// Create Library
-		lib.Name = libname
+		lib.Name = reqVars["libname"]
 		err = lib.Store()
 		if err != nil {
 			SendErrorResponse(w, r, err)
@@ -404,12 +308,12 @@ func HandleFileUpload(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, r, err)
 	}
 
-	lv, err = lib.GetVersion(libver)
+	lv, err = lib.GetVersion(reqVars["libver"])
 	switch {
 	case err != nil && err == ErrNotFound:
 		// Create LibraryVersion
 		lv.LibraryId = lib.Id
-		lv.Version = libver
+		lv.Version = reqVars["libver"]
 		err = lv.Store()
 		if err != nil {
 			SendErrorResponse(w, r, err)
@@ -421,10 +325,10 @@ func HandleFileUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	files, err := lv.GetFilesByFilter(map[string]interface{}{
-		"platform": platform,
-		"arch":     arch,
-		"type":     filetype,
-		"name":     filename,
+		"platform": reqVars["platform"],
+		"arch":     reqVars["arch"],
+		"type":     reqVars["filetype"],
+		"name":     reqVars["filename"],
 	})
 
 	var file File
@@ -433,7 +337,7 @@ func HandleFileUpload(w http.ResponseWriter, r *http.Request) {
 	case err == ErrNotFound:
 		// Create the file in the database
 		log.Debug("File not found, storing")
-		file = File{0, lv.Id, filename, filetype, platform, arch, time.Now(), FileLinks{}, "", ""}
+		file = File{0, lv.Id, reqVars["filename"], reqVars["filetype"], reqVars["platform"], reqVars["arch"], time.Now(), FileLinks{}, "", ""}
 		err = file.Store()
 		if err != nil {
 			SendErrorResponse(w, r, err)
@@ -494,23 +398,9 @@ func HandleFileUpload(w http.ResponseWriter, r *http.Request) {
 
 func HandleFileDownload(w http.ResponseWriter, r *http.Request) {
 	reqVars := mux.Vars(r)
-	libname := reqVars["libname"]
-	libver := reqVars["libver"]
-	platform := reqVars["platform"]
-	arch := reqVars["arch"]
-	filetype := reqVars["filetype"]
-	filename := reqVars["filename"]
+	logRequest(reqVars, "File Download")
 
-	log.WithFields(log.Fields{
-		"library":  libname,
-		"version":  libver,
-		"platform": platform,
-		"arch":     arch,
-		"filetype": filetype,
-		"filename": filename,
-	}).Info("File Download")
-
-	lv, err := getLibVer(libname, libver)
+	lv, err := getLibVer(reqVars["libname"], reqVars["libver"])
 
 	if err != nil {
 		SendErrorResponse(w, r, err)
@@ -518,10 +408,10 @@ func HandleFileDownload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	files, err := lv.GetFilesByFilter(map[string]interface{}{
-		"platform": platform,
-		"arch":     arch,
-		"type":     filetype,
-		"name":     filename,
+		"platform": reqVars["platform"],
+		"arch":     reqVars["arch"],
+		"type":     reqVars["filetype"],
+		"name":     reqVars["filename"],
 	})
 
 	if err != nil {
@@ -566,30 +456,16 @@ func HandleFileDownload(w http.ResponseWriter, r *http.Request) {
 
 func HandlePutLibraryFilesPlatformArchTypeName(w http.ResponseWriter, r *http.Request) {
 	reqVars := mux.Vars(r)
-	libname := reqVars["libname"]
-	libver := reqVars["libver"]
-	platform := reqVars["platform"]
-	arch := reqVars["arch"]
-	filetype := reqVars["filetype"]
-	filename := reqVars["filename"]
+	logRequest(reqVars, "File Store")
 
-	log.WithFields(log.Fields{
-		"library":  libname,
-		"version":  libver,
-		"platform": platform,
-		"arch":     arch,
-		"filetype": filetype,
-		"filename": filename,
-	}).Info("File Store")
-
-	lv, err := getLibVer(libname, libver)
+	lv, err := getLibVer(reqVars["libname"], reqVars["libver"])
 
 	if err != nil {
 		SendErrorResponse(w, r, err)
 		return
 	}
 
-	file := &File{0, lv.Id, filename, filetype, platform, arch, time.Now(), FileLinks{}, "", ""}
+	file := &File{0, lv.Id, reqVars["filename"], reqVars["filetype"], reqVars["platform"], reqVars["arch"], time.Now(), FileLinks{}, "", ""}
 
 	err = file.Store()
 

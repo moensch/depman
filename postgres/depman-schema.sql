@@ -1,6 +1,7 @@
 CREATE TABLE libraries (
   "library_id" SERIAL PRIMARY KEY,
   "name" character varying(255) NOT NULL,
+  "ns" character varying(255) NOT NULL,
   "created" timestamp with time zone DEFAULT ('now'::text)::timestamp(6) with time zone
 );
 
