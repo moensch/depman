@@ -85,6 +85,23 @@ func getPlatform() (string, error) {
 	return "", errors.New("Cannot determine platform - use -a flag")
 }
 
+func getNamespace() (string, error) {
+	out, err := exec.Command("/usr/bin/hg", "branch").Output()
+	if err != nil {
+		return "", fmt.Errorf("Cannot run `hg branch': %s", err)
+	}
+
+	hg_branch := strings.TrimSpace(string(out))
+
+	out, err = exec.Command("/usr/bin/whoami").Output()
+	if err != nil {
+		return "", fmt.Errorf("Cannot run `whoami': %s", err)
+	}
+	username := strings.TrimSpace(string(out))
+
+	return fmt.Sprintf("%s-%s", username, hg_branch), nil
+}
+
 func main() {
 	flag.Parse()
 
@@ -101,6 +118,11 @@ func main() {
 			log.Fatal(err)
 		}
 	}
+	if depmanNs == "" {
+		if depmanNs, err = getNamespace(); err != nil {
+			log.Fatal(err)
+		}
+	}
 
 	includeDir = strings.TrimSuffix(includeDir, "/")
 	libDir = strings.TrimSuffix(libDir, "/")
@@ -113,6 +135,7 @@ func main() {
 	}
 
 	operation := flag.Arg(0)
+	log.Infof("Namespace   : %s", depmanNs)
 	log.Infof("Architecture: %s", depmanArch)
 	log.Infof("Platform    : %s", depmanPlatform)
 	log.Infof("Include Dir : %s", includeDir)
@@ -178,7 +201,7 @@ func getFileType(path string) (string, error) {
 }
 
 func uploadFiles(libname string, libver string, files []string) error {
-	url_tpl := fmt.Sprintf("/v1/lib/%s/%s/versions/%s/files/%s/%s/%%s/%%s/%%s", "ns", libname, libver, depmanPlatform, depmanArch)
+	url_tpl := fmt.Sprintf("/v1/%s/lib/%s/versions/%s/files/%s/%s/%%s/%%s/%%s", depmanNs, libname, libver, depmanPlatform, depmanArch)
 	log.Debugf("URL: %s", url_tpl)
 
 	//links := make([]string, 0)
@@ -380,7 +403,7 @@ func makeFlags(libnames []string) {
 }
 
 func downloadLib(libname string, libver string, wanted string, include_subdir string) error {
-	body, err := GETRequestJSON(fmt.Sprintf("/v1/lib/%s/%s/versions/%s/files/%s/%s", "ns", libname, libver, depmanPlatform, depmanArch))
+	body, err := GETRequestJSON(fmt.Sprintf("/v1/%s/lib/%s/versions/%s/files/%s/%s", depmanNs, libname, libver, depmanPlatform, depmanArch))
 
 	if err != nil {
 		log.Fatalf("ERROR: %s", err)
@@ -459,8 +482,8 @@ func downloadFile(libname string, libver string, f depman.File, dir string, mode
 		}
 	}
 
-	path := fmt.Sprintf("/v1/lib/%s/%s/versions/%s/files/%s/%s/%s/%s/download",
-		"ns", libname, libver, depmanPlatform, depmanArch, f.Type, f.Name)
+	path := fmt.Sprintf("/v1/%s/lib/%s/versions/%s/files/%s/%s/%s/%s/download",
+		depmanNs, libname, libver, depmanPlatform, depmanArch, f.Type, f.Name)
 
 	log.Infof("Download URL: %s", path)
 

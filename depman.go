@@ -11,8 +11,9 @@ import (
 )
 
 var (
-	dbconn   *sql.DB
-	StoreDir string
+	dbconn    *sql.DB
+	StoreDir  string
+	DefaultNS string
 )
 
 var ErrNotFound = errors.New("Entry not found")
