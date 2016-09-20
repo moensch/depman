@@ -35,7 +35,7 @@ func init() {
 	flag.StringVar(&depmanUrl, "s", os.Getenv("DEPMAN_URL"), "Server URL")
 	flag.StringVar(&includeDir, "i", "depman-include/", "Include dir")
 	flag.StringVar(&libDir, "l", "depman-lib/", "Lib dir")
-	flag.StringVar(&logLevel, "d", "info", "Log level (debug|info|warn|error|fatal)")
+	flag.StringVar(&logLevel, "d", "warn", "Log level (debug|info|warn|error|fatal)")
 	flag.StringVar(&depFile, "f", "depman_deps.txt", "Dependency file")
 }
 
@@ -283,6 +283,44 @@ func uploadFile(localfile string, path string) error {
 	return nil
 }
 
+func parseDepLine(line string) (map[string]string, error) {
+	// split by pipe, surrounded by optional white space
+	white := regexp.MustCompile("\\s*\\|\\s*")
+	fields := white.Split(line, -1)
+
+	ret := map[string]string{
+		"library": "",
+		"version": "",
+		"incdir":  "",
+		"wanted":  "header,archive,shared",
+	}
+
+	for idx, field := range fields {
+		switch {
+		case idx == 0:
+			parts := strings.Split(field, ":")
+			ret["library"] = parts[0]
+			if len(parts) > 1 {
+				ret["version"] = parts[1]
+			} else {
+				ret["version"] = "latest"
+			}
+		case idx == 1:
+			ret["incdir"] = strings.TrimSuffix(field, "/")
+			if !strings.HasPrefix(ret["incdir"], "/") {
+				ret["incdir"] = "/" + ret["incdir"]
+			}
+		case idx == 2:
+			ret["wanted"] = field
+		}
+	}
+
+	for k, v := range ret {
+		log.Debugf("Dependency %s => %s", k, v)
+	}
+	return ret, nil
+}
+
 func downloadFilesFromDepfile(depfile string) ([]string, error) {
 	libnames := make([]string, 0)
 	fh, err := os.Open(depfile)
@@ -294,8 +332,6 @@ func downloadFilesFromDepfile(depfile string) ([]string, error) {
 
 	r := bufio.NewReader(fh)
 
-	re := regexp.MustCompile("(\\S+):(\\S+)")
-
 	for err == nil {
 		line, _, err := r.ReadLine()
 		if err != nil && err != io.EOF {
@@ -303,45 +339,49 @@ func downloadFilesFromDepfile(depfile string) ([]string, error) {
 		} else if err == io.EOF {
 			break
 		}
-		s := string(line)
-		log.Debugf("Read line: '%s'", s)
-
-		matches := re.FindAllStringSubmatch(s, -1)
-		var libname string
-		var libver string
-
-		switch {
-		case len(matches) == 0:
-			return libnames, errors.New(fmt.Sprintf("Line in dep file cannot be parsed: %s", line))
-		default:
-			libname = matches[0][1]
-			libver = matches[0][2]
+		s_line := string(line)
+		log.Debugf("Read line: '%s'", s_line)
+		if s_line == "" {
+			// empty line
+			continue
 		}
+		dep, err := parseDepLine(s_line)
 
-		log.Infof("Want lib: %s / %s", libname, libver)
+		log.Infof("Want lib: %s / %s in subdir %s", dep["library"], dep["version"], dep["incdir"])
 
-		err = downloadLib(libname, libver)
+		err = downloadLib(dep["library"], dep["version"], dep["wanted"], dep["incdir"])
 		if err != nil {
 			return libnames, err
 		}
 
-		libnames = append(libnames, strings.TrimPrefix(libname, "lib"))
+		libnames = append(libnames, strings.TrimPrefix(dep["library"], "lib"))
 	}
 
 	return libnames, nil
 }
 
 func makeFlags(libnames []string) {
-	cflags := fmt.Sprintf("-I%s", includeDir)
-	ldflags := fmt.Sprintf("-L%s ", libDir)
+	includeDirAbs, err := filepath.Abs(includeDir)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	ldflags = ldflags + "-l" + strings.Join(libnames, " -l")
+	libDirAbs, err := filepath.Abs(libDir)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	fmt.Printf("CCFLAGS = %s\n", cflags)
-	fmt.Printf("CCLDFLAGS = %s\n", ldflags)
+	fmt.Printf("DEPMAN_LIB_DIR = %s\n", libDirAbs)
+	fmt.Printf("DEPMAN_INC_DIR = %s\n", includeDirAbs)
+	fmt.Printf("DEPMAN_CFLAGS = -I$(DEPMAN_INC_DIR)\n")
+	fmt.Printf("DEPMAN_CCLDFLAGS = -L$(DEPMAN_LIB_DIR)")
+	for _, lib := range libnames {
+		fmt.Printf(" \\\n\t-l%s", lib) // line continuation on previous line plus tab
+	}
+	fmt.Printf("\n")
 }
 
-func downloadLib(libname string, libver string) error {
+func downloadLib(libname string, libver string, wanted string, include_subdir string) error {
 	body, err := GETRequestJSON(fmt.Sprintf("/lib/%s/versions/%s/files/%s/%s", libname, libver, depmanPlatform, depmanArch))
 
 	if err != nil {
@@ -362,23 +402,27 @@ func downloadLib(libname string, libver string) error {
 
 		var mode os.FileMode
 		var dir string
-		switch file.Type {
-		case "header":
+		switch {
+		case file.Type == "header" && strings.Contains(wanted, "header"):
 			dir = includeDir
+			if include_subdir != "" {
+				dir = dir + include_subdir
+			}
 			mode = 0644
-		case "archive":
+		case file.Type == "archive" && strings.Contains(wanted, "archive"):
 			dir = libDir
 			mode = 0644
-		case "shared":
+		case file.Type == "shared" && strings.Contains(wanted, "shared"):
 			dir = libDir
 			mode = 0755
+		default:
+			log.Warnf("Ignoring file %s of type %s as it is not wanted", file.Name, file.Type)
+			continue
 		}
 
 		err = downloadFile(libname, libver, file, dir, mode)
 		if err != nil {
-			// TODO: Make fatal once done testing
-			log.Warnf("ERROR: %s", err)
-			continue
+			return err
 		}
 
 		localfile := dir + "/" + file.Name
@@ -398,8 +442,14 @@ func downloadLib(libname string, libver string) error {
 }
 
 func downloadFile(libname string, libver string, f depman.File, dir string, mode os.FileMode) error {
-	tmpfile := dir + "/" + "." + f.Name + ".dwn"
-	localfile := dir + "/" + f.Name
+	tmpfile := fmt.Sprintf("%s/.%s.dwn", dir, f.Name)
+	localfile := fmt.Sprintf("%s/%s", dir, f.Name)
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		err = os.MkdirAll(dir, 0755)
+		if err != nil {
+			return err
+		}
+	}
 
 	log.Infof("Downloading %s/%s/%s to %s", libname, libver, f.Name, localfile)
 

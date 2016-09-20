@@ -1,2 +1,4 @@
-mxcrunch:1.1
-Base64:2.0.0
+curl:4      | curl | header,archive
+some:latest |      | header,shared
+other
+ssl         | ssl

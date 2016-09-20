@@ -58,13 +58,17 @@ func (l *Library) GetVersions() (LibraryVersions, error) {
 }
 
 func (l *Library) GetVersion(version string) (*LibraryVersion, error) {
-	lv, err := GetLibraryVersionByLibraryIdVersion(l.Id, version)
-	return lv, err
+	if version == "latest" {
+		return l.GetLatestVersion()
+	} else {
+		lv, err := GetLibraryVersionByLibraryIdVersion(l.Id, version)
+		return lv, err
+	}
 }
 
 func (l *Library) GetLatestVersion() (*LibraryVersion, error) {
-	lv := &LibraryVersion{}
-	return lv, nil
+	lv, err := GetLatestLibraryVersion(l.Id)
+	return lv, err
 }
 
 func GetLibraryById(id int) (*Library, error) {
@@ -139,12 +143,40 @@ func GetLibraryVersionsByLibraryId(library_id int) (LibraryVersions, error) {
 	return versions, err
 }
 
+func GetLatestLibraryVersion(library_id int) (*LibraryVersion, error) {
+	lv := &LibraryVersion{}
+
+	query := `SELECT library_version_id, library_id, version, created
+		FROM library_versions
+		WHERE library_id = $1
+		ORDER BY string_to_array(version, '.')::int[] DESC
+		LIMIT 1`
+
+	log.Debugf("Query: %s", query)
+
+	err := dbconn.
+		QueryRow(query, library_id).
+		Scan(&lv.Id, &lv.LibraryId, &lv.Version, &lv.Created)
+
+	switch {
+	case err == sql.ErrNoRows:
+		return lv, ErrNotFound
+	case err != nil:
+		log.Error(err)
+		return lv, err
+	}
+
+	return lv, nil
+}
+
 func GetLibraryVersionByLibraryIdVersion(library_id int, version string) (*LibraryVersion, error) {
 	lv := &LibraryVersion{}
 
 	query := `SELECT library_version_id, library_id, version, created
 		FROM library_versions
-		WHERE library_id = $1 AND version = $2`
+		WHERE library_id = $1 AND version LIKE $2 || '%'
+		ORDER BY string_to_array(version, '.')::int[] DESC
+		LIMIT 1`
 
 	log.Debugf("Query: %s", query)
 
