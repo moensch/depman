@@ -80,6 +80,7 @@ func (f Files) ToString() string {
 
 func GetLatestVersion(filter map[string]interface{}) (string, error) {
 	// Don't filter by version anymore
+	ver_search := filter["version"]
 	delete(filter, "version")
 	query := `SELECT version
 		FROM files
@@ -93,6 +94,12 @@ func GetLatestVersion(filter map[string]interface{}) (string, error) {
 		where_clauses[i] = fmt.Sprintf("%s = $%d", col, i+1)
 		values[i] = val
 		i++
+	}
+
+	if ver_search != "latest" {
+		// Search by prefix - for gigglz
+		where_clauses = append(where_clauses, fmt.Sprintf("version LIKE $%d || '%%'", len(values)+1))
+		values = append(values, ver_search)
 	}
 
 	query += strings.Join(where_clauses, " AND ")
@@ -120,14 +127,12 @@ func GetFilesByFilter(filter map[string]interface{}) (Files, error) {
 
 	if _, ok := filter["version"]; ok {
 		// Got version
-		if filter["version"] == "latest" {
-			log.Debug("Have to find latest version")
-			ver, err := GetLatestVersion(filter)
-			if err != nil {
-				return files, err
-			}
-			filter["version"] = ver
+		log.Debug("Have to find latest version")
+		ver, err := GetLatestVersion(filter)
+		if err != nil {
+			return files, err
 		}
+		filter["version"] = ver
 	}
 	query := `SELECT file_id, library, version, ns, name, type, platform, arch, created
 		FROM files

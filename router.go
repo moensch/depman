@@ -66,6 +66,12 @@ func RouteDefinitions() Routes {
 			HandleIndex,
 		},
 		Route{
+			"FindFile",
+			"GET",
+			"/v1/{ns}/search/{platform}/{arch}/{name}",
+			HandleListFiles,
+		},
+		Route{
 			"ListLibraries",
 			"GET",
 			"/v1/{ns}/lib",
