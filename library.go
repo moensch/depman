@@ -2,43 +2,8 @@ package depman
 
 import (
 	"database/sql"
-	"encoding/json"
 	log "github.com/Sirupsen/logrus"
 )
-
-type SimpleEntry struct {
-	Name string `json:"name"`
-}
-
-func (l SimpleEntry) ToJsonString() (string, error) {
-	var retval string
-	jsonblob, err := json.Marshal(l)
-	if err != nil {
-		return retval, err
-	}
-	return string(jsonblob), err
-}
-
-func (l SimpleEntry) ToString() string {
-	//TODO
-	return ""
-}
-
-type SimpleEntries []SimpleEntry
-
-func (l SimpleEntries) ToJsonString() (string, error) {
-	var retval string
-	jsonblob, err := json.Marshal(l)
-	if err != nil {
-		return retval, err
-	}
-	return string(jsonblob), err
-}
-
-func (l SimpleEntries) ToString() string {
-	//TODO
-	return ""
-}
 
 func ListLibraries() (SimpleEntries, error) {
 	entries := SimpleEntries{}

@@ -19,6 +19,7 @@ type File struct {
 	Type             string    `json:"type"`
 	Platform         string    `json:"platform"`
 	Arch             string    `json:"arch"`
+	Info             string    `json:"info"`
 	Created          time.Time `json:"created"`
 	Links            FileLinks `json:"file_links"`
 }
@@ -33,8 +34,7 @@ func (f File) ToJsonString() (string, error) {
 }
 
 func (f File) ToString() string {
-	//TODO
-	return ""
+	return fmt.Sprintf("%s/%s/%s/%s", f.Platform, f.Arch, f.Type, f.Name)
 }
 
 func NewFileFromVars(vars map[string]string) File {
@@ -74,17 +74,19 @@ func (f Files) ToJsonString() (string, error) {
 }
 
 func (f Files) ToString() string {
-	//TODO
-	return ""
+	entries := make([]string, len(f))
+	for idx, e := range f {
+		entries[idx] = e.ToString()
+	}
+
+	return strings.Join(entries, "\n")
 }
 
-func GetLatestVersion(filter map[string]interface{}) (string, error) {
+func GetLatestVersion(filter map[string]interface{}, table string) (string, error) {
 	// Don't filter by version anymore
 	ver_search := filter["version"]
 	delete(filter, "version")
-	query := `SELECT version
-		FROM files
-		WHERE `
+	query := fmt.Sprintf("SELECT version FROM %s WHERE ", table)
 
 	// TODO: Code duplication with the below
 	var i int = 0
@@ -128,13 +130,12 @@ func GetFilesByFilter(filter map[string]interface{}) (Files, error) {
 	if _, ok := filter["version"]; ok {
 		// Got version
 		log.Debug("Have to find latest version")
-		ver, err := GetLatestVersion(filter)
-		if err != nil {
-			return files, err
+		ver, err := GetLatestVersion(filter, "files")
+		if err == nil {
+			filter["version"] = ver
 		}
-		filter["version"] = ver
 	}
-	query := `SELECT file_id, library, version, ns, name, type, platform, arch, created
+	query := `SELECT file_id, library, version, ns, name, type, platform, arch, info, created
 		FROM files
 		WHERE `
 
@@ -158,7 +159,7 @@ func GetFilesByFilter(filter map[string]interface{}) (Files, error) {
 
 	for rows.Next() {
 		file := File{}
-		rows.Scan(&file.Id, &file.Library, &file.Version, &file.NameSpace, &file.Name, &file.Type, &file.Platform, &file.Arch, &file.Created)
+		rows.Scan(&file.Id, &file.Library, &file.Version, &file.NameSpace, &file.Name, &file.Type, &file.Platform, &file.Arch, &file.Info, &file.Created)
 
 		files = append(files, file)
 	}
@@ -167,7 +168,7 @@ func GetFilesByFilter(filter map[string]interface{}) (Files, error) {
 		files[idx].Links, _ = files[idx].GetLinks()
 	}
 
-	return files, err
+	return files, nil
 }
 
 func (f *File) GetLinks() (FileLinks, error) {
@@ -179,9 +180,9 @@ func (f *File) Store() error {
 	var query string
 	if f.Id == 0 {
 		//insert
-		query = `INSERT INTO files (library, version, ns, name, type, platform, arch)
+		query = `INSERT INTO files (library, version, ns, name, type, platform, arch, info)
 			VALUES
-			($1, $2, $3, $4, $5)
+			($1, $2, $3, $4, $5, $6, $7, $8)
 			RETURNING file_id
 			`
 	} else {
@@ -190,7 +191,7 @@ func (f *File) Store() error {
 	}
 
 	var lastInsertId int
-	err := dbconn.QueryRow(query, f.Library, f.Version, f.NameSpace, f.Name, f.Type, f.Platform, f.Arch).Scan(&lastInsertId)
+	err := dbconn.QueryRow(query, f.Library, f.Version, f.NameSpace, f.Name, f.Type, f.Platform, f.Arch, f.Info).Scan(&lastInsertId)
 	if err != nil {
 		return err
 	}
@@ -201,7 +202,7 @@ func (f *File) Store() error {
 }
 
 func (f *File) FilePath() string {
-	return fmt.Sprintf(StoreDir+"/%s/%s/%s/%s/%s/%s", f.Library, f.Version, f.Platform, f.Arch, f.Type, f.Name)
+	return fmt.Sprintf(StoreDir+"/%s/%s/%s/%s/%s/%s/%s", f.NameSpace, f.Library, f.Version, f.Platform, f.Arch, f.Type, f.Name)
 }
 
 func (fl *FileLink) Store() error {

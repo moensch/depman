@@ -41,6 +41,25 @@ func init() {
 	flag.StringVar(&libDir, "l", "depman-lib/", "Lib dir")
 	flag.StringVar(&logLevel, "d", "warn", "Log level (debug|info|warn|error|fatal)")
 	flag.StringVar(&depFile, "f", "depman_deps.txt", "Dependency file")
+
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage for %s:\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "\n\nOperation:\n")
+		fmt.Fprintf(os.Stderr, "  get:\n")
+		fmt.Fprintf(os.Stderr, "    Pull dependencies from depfile (-f)\n")
+		fmt.Fprintf(os.Stderr, "  scan:\n")
+		fmt.Fprintf(os.Stderr, "    Recursively scan directory for #includes and pull them\n")
+		fmt.Fprintf(os.Stderr, "  search <headerfile>:\n")
+		fmt.Fprintf(os.Stderr, "    Find out which library provides a given header file\n")
+		fmt.Fprintf(os.Stderr, "  upload <libname> <libver> [list of files...]:\n")
+		fmt.Fprintf(os.Stderr, "    Store new binaries and headers (guesses file types from extensions)\n")
+		fmt.Fprintf(os.Stderr, "  uploadextra <name> <version> <filepath>:\n")
+		fmt.Fprintf(os.Stderr, "    Store an arbitrary file\n")
+		fmt.Fprintf(os.Stderr, "  getextra <name> [<version>]:\n")
+		fmt.Fprintf(os.Stderr, "    Download extra (non-lib-related) file\n")
+		fmt.Fprintf(os.Stderr, "\n\nConfig:\n")
+		flag.PrintDefaults()
+	}
 }
 
 func main() {
@@ -98,6 +117,20 @@ func main() {
 
 	new_header_files = make(map[string]int)
 	switch operation {
+	case "search":
+		if flag.NArg() < 1 {
+			log.Warnf("Not enough parameters")
+			flag.Usage()
+			os.Exit(1)
+		}
+		searchfile := flag.Arg(1)
+
+		log.Infof("Trying to find which library provides file: %s", searchfile)
+		library, version, err := findLibFromFile(searchfile)
+		if err != nil {
+			log.Fatalf("Not found: %s", err)
+		}
+		fmt.Printf("%s:%s\n", library, version)
 	case "scan":
 		ScanWantedTypes := "header,archive,shared"
 		if flag.NArg() > 1 {
@@ -106,24 +139,31 @@ func main() {
 		log.Warnf("Want: %s", ScanWantedTypes)
 		deps := RequiredLibs{}
 
+		// Enter scan loop at current directory
 		new_header_files["."] = 1
 
 		var libnames []string
+
+		// Looping to scan newly downloaded files
 		for {
-			// Re-assign locally and clear
 			if len(new_header_files) == 0 {
 				log.Infof("Nothing more to fetch")
 				break
 			}
 
+			// Re-assign locally and clear because ParseSourceFiles
+			//  appends to new_header_files global again
 			files_to_scan := new_header_files
 			new_header_files = make(map[string]int)
 			for scanfile, _ := range files_to_scan {
 				log.Infof("Scanning recursively: %s", scanfile)
+				// populates new_header_files and adds to deps
 				err := ParseSourceFiles(scanfile, ScanWantedTypes, &deps)
 				if err != nil {
 					log.Fatalf("ERROR: %s", err)
 				}
+				// Will skip stuff already downloaded, so it's safe to
+				//   call this over and over again
 				newlibs, err := deps.Download()
 				if err != nil {
 					log.Fatalf("ERROR: %s", err)
@@ -135,6 +175,32 @@ func main() {
 		}
 
 		makeFlags(libnames)
+	case "getextra":
+		if flag.NArg() < 2 {
+			log.Warnf("Not enough parameters")
+			flag.Usage()
+			os.Exit(1)
+		}
+
+		extrafiles := flag.Args()[1:]
+		for _, extrafile := range extrafiles {
+			split := strings.Split(extrafile, ":")
+			localfile := split[0]
+			version := "latest"
+			if len(split) == 2 {
+				version = split[1]
+			}
+
+			log.Infof("Downloading extrafile: %s (%s)", localfile, version)
+
+			uri_path := fmt.Sprintf("/v1/%s/extra/%s/%s/download", depmanNs, localfile, version)
+
+			err = doDownload(uri_path, localfile, 0664)
+			if err != nil {
+				log.Fatalf("Cannot download extra file: %s", err)
+			}
+			fmt.Fprintf(os.Stdout, "Downloaded: %s (%s)\n", localfile, version)
+		}
 	case "get":
 		deps, err := ParseDepfile(depFile)
 		if err != nil {
@@ -146,6 +212,20 @@ func main() {
 		}
 
 		makeFlags(libnames)
+	case "uploadextra":
+		if flag.NArg() < 4 {
+			log.Warnf("Not enough parameters")
+			flag.Usage()
+			os.Exit(1)
+		}
+		extraname := flag.Arg(1)
+		extraver := flag.Arg(2)
+		localfile := flag.Arg(3)
+		uri_upload := fmt.Sprintf("/v1/%s/extra/%s/%s/upload", depmanNs, extraname, extraver)
+		err := uploadFile(localfile, uri_upload)
+		if err != nil {
+			log.Fatalf("ERROR: %s", err)
+		}
 	case "upload":
 		log.Infof("Uploading...")
 		if flag.NArg() < 4 {
@@ -164,6 +244,10 @@ func main() {
 		if err != nil {
 			log.Fatalf("ERROR: %s", err)
 		}
+	default:
+		log.Warnf("Unknown operation: %s", operation)
+		flag.Usage()
+		os.Exit(1)
 	}
 }
 
@@ -175,7 +259,8 @@ func getArch() (string, error) {
 		}
 		out, err := exec.Command(uname, "-m").Output()
 		if err != nil {
-			log.Fatalf("ERROR: %s", err)
+			log.Warnf("ERROR: %s", err)
+			continue
 		}
 
 		re := regexp.MustCompile("(x86_64|i386)")
@@ -195,7 +280,8 @@ func getPlatform() (string, error) {
 	for _, rpm := range []string{"/usr/bin/rpm", "/bin/rpm"} {
 		out, err := exec.Command(rpm, "--eval", "%dist").Output()
 		if err != nil {
-			log.Fatalf("ERROR: %s", err)
+			log.Warnf("ERROR: %s", err)
+			continue
 		}
 
 		re := regexp.MustCompile("(el5|el6|el7)")
@@ -212,6 +298,17 @@ func getPlatform() (string, error) {
 }
 
 func getNamespace() (string, error) {
+	if _, err := os.Stat("/depman_ns.sh"); err == nil {
+		log.Debugf("Getting namespace from /depman_ns.sh script")
+
+		out, err := exec.Command("/depman_ns.sh").Output()
+		if err != nil {
+			return "", fmt.Errorf("Cannot run `/depman_ns.sh': %s", err)
+		}
+
+		return strings.TrimSpace(string(out)), nil
+	}
+
 	out, err := exec.Command("/usr/bin/hg", "branch").Output()
 	if err != nil {
 		return "", fmt.Errorf("Cannot run `hg branch': %s", err)
@@ -237,6 +334,8 @@ func getFileType(path string) (string, error) {
 		return "header", nil
 	case filepath.Ext(path) == ".a":
 		return "archive", nil
+	case filepath.Ext(path) == ".o":
+		return "object", nil
 	case strings.Contains(filepath.Base(path), ".so"):
 		return "shared", nil
 	default:
@@ -354,6 +453,7 @@ type RequiredLib struct {
 	IncDir     string
 	Wanted     string
 	Downloaded bool
+	HasLib     bool
 }
 
 func (r *RequiredLib) String() string {
@@ -392,17 +492,23 @@ func (r *RequiredLib) Download() error {
 			}
 			mode = 0644
 		case file.Type == "archive" && strings.Contains(r.Wanted, "archive"):
+			r.HasLib = true
+			dir = libDir
+			mode = 0644
+		case file.Type == "object" && strings.Contains(r.Wanted, "object"):
+			r.HasLib = true
 			dir = libDir
 			mode = 0644
 		case file.Type == "shared" && strings.Contains(r.Wanted, "shared"):
 			dir = libDir
+			r.HasLib = true
 			mode = 0755
 		default:
 			log.Warnf("Ignoring file %s of type %s as it is not wanted", file.Name, file.Type)
 			continue
 		}
 
-		localfile, err := downloadFile(r.Name, r.Version, file, dir, mode)
+		localfile, err := downloadLibFile(r.Name, r.Version, file, dir, mode)
 
 		if err != nil {
 			return err
@@ -457,7 +563,9 @@ func (r *RequiredLibs) Download() ([]string, error) {
 			if err != nil {
 				return libnames, err
 			}
-			libnames = append(libnames, strings.TrimPrefix(lib.Name, "lib"))
+			if lib.HasLib {
+				libnames = append(libnames, strings.TrimPrefix(lib.Name, "lib"))
+			}
 		} else {
 			log.Debugf(" Already downloaded: %s", lib.String())
 		}
@@ -589,16 +697,7 @@ func HashIncludeScanner(path string, info os.FileInfo, err error) error {
 		log.Errorf("Scanning error: %s", err)
 		return err
 	}
-	/*
-		if strings.HasPrefix(path, includeDir) {
-			// Do not descend into our own depman includes
-			return filepath.SkipDir
-		}
-		if strings.HasPrefix(path, libDir) {
-			// Do not descend into our own depman libs
-			return filepath.SkipDir
-		}
-	*/
+
 	log.Debugf("Scanning path: %s - dir %t", path, info.IsDir())
 
 	if !info.IsDir() && info.Mode().IsRegular() {
@@ -664,12 +763,26 @@ func makeFlags(libnames []string) {
 
 	fmt.Printf("DEPMAN_LIB_DIR = %s\n", libDirAbs)
 	fmt.Printf("DEPMAN_INC_DIR = %s\n", includeDirAbs)
+	fmt.Printf("DEPMAN_LIBS = -l%s\n", strings.Join(dedupeStringSlice(libnames), " \\\n\t-l"))
 	fmt.Printf("DEPMAN_CFLAGS = -I$(DEPMAN_INC_DIR)\n")
-	fmt.Printf("DEPMAN_CCLDFLAGS = -L$(DEPMAN_LIB_DIR)")
-	for _, lib := range libnames {
-		fmt.Printf(" \\\n\t-l%s", lib) // line continuation on previous line plus tab
-	}
+	fmt.Printf("DEPMAN_CCLDFLAGS = -L$(DEPMAN_LIB_DIR) $(DEPMAN_LIBS)")
 	fmt.Printf("\n")
+}
+
+// https://play.golang.org/p/q3bZ3hpOzD
+func dedupeStringSlice(slice []string) []string {
+	m := make(map[string]bool)
+
+	for _, v := range slice {
+		if _, seen := m[v]; !seen {
+			slice[len(m)] = v
+			m[v] = true
+		}
+	}
+
+	slice = slice[:len(m)]
+
+	return slice
 }
 
 func findLibFromFile(filename string) (string, string, error) {
@@ -691,17 +804,28 @@ func findLibFromFile(filename string) (string, string, error) {
 	return files[0].Library, files[0].Version, nil
 }
 
-func downloadFile(libname string, libver string, f depman.File, dir string, mode os.FileMode) (string, error) {
-	tmpfile := fmt.Sprintf("%s/.%s.dwn", dir, f.Name)
+func downloadLibFile(libname string, libver string, f depman.File, dir string, mode os.FileMode) (string, error) {
 	localfile := fmt.Sprintf("%s/%s", dir, f.Name)
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		err = os.MkdirAll(dir, 0755)
+	log.Debugf("Downloading %s/%s/%s to %s", libname, libver, f.Name, localfile)
+
+	uri_path := fmt.Sprintf("/v1/%s/lib/%s/versions/%s/files/%s/%s/%s/%s/download",
+		depmanNs, libname, libver, depmanPlatform, depmanArch, f.Type, f.Name)
+
+	return localfile, doDownload(uri_path, localfile, mode)
+}
+
+func doDownload(url string, localfile string, mode os.FileMode) error {
+	log.Debugf("Downloading from %s to %s", url, localfile)
+	filedir := filepath.Dir(localfile)
+	filename := filepath.Base(localfile)
+
+	tmpfile := fmt.Sprintf("%s/.%s.dwn", filedir, filename)
+	if _, err := os.Stat(filedir); os.IsNotExist(err) {
+		err = os.MkdirAll(filedir, 0755)
 		if err != nil {
-			return localfile, err
+			return err
 		}
 	}
-
-	log.Debugf("Downloading %s/%s/%s to %s", libname, libver, f.Name, localfile)
 
 	for _, fname := range []string{tmpfile, localfile} {
 		_, err := os.Stat(fname)
@@ -711,63 +835,53 @@ func downloadFile(libname string, libver string, f depman.File, dir string, mode
 		}
 	}
 
-	path := fmt.Sprintf("/v1/%s/lib/%s/versions/%s/files/%s/%s/%s/%s/download",
-		depmanNs, libname, libver, depmanPlatform, depmanArch, f.Type, f.Name)
-
-	log.Debugf("Download URL: %s", path)
-
-	req_url := strings.Join([]string{depmanUrl, path}, "")
-
-	req, err := http.NewRequest("GET", req_url, nil)
-	if err != nil {
-		return localfile, err
-	}
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return localfile, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return localfile, errors.New(fmt.Sprintf("Http error: %d", resp.StatusCode))
-	}
-
 	fh, err := os.OpenFile(tmpfile, os.O_WRONLY|os.O_CREATE, mode)
+	defer fh.Close()
 	if err != nil {
-		return localfile, err
+		return err
 	}
-	for {
-		buffer := make([]byte, 4096)
-		len, err := resp.Body.Read(buffer)
 
-		if err != nil && err != io.EOF {
-			fh.Close()
-			os.Remove(tmpfile)
-			return localfile, err
-		}
-		if len == 0 {
-			// Nothing more to read
-			log.Debug("Finished reading")
-			break
-		}
-
-		log.Debugf("Read %d bytes", len)
-
-		len_w, err := fh.Write(buffer[:len])
-		if err != nil {
-			fh.Close()
-			os.Remove(tmpfile)
-			return localfile, err
-		}
-		log.Debugf("Wrote %d bytes", len_w)
+	err = downloadToFh(url, fh)
+	if err != nil {
+		fh.Close()
+		os.Remove(tmpfile)
+		return err
 	}
 
 	fh.Close()
 
 	err = os.Rename(tmpfile, localfile)
 
-	return localfile, err
+	return err
+}
+
+func downloadToFh(url string, fh io.Writer) error {
+	log.Debugf("Download URL: %s", url)
+
+	req_url := strings.Join([]string{depmanUrl, url}, "")
+
+	req, err := http.NewRequest("GET", req_url, nil)
+	if err != nil {
+		return err
+	}
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return errors.New(fmt.Sprintf("Http error: %d", resp.StatusCode))
+	}
+
+	written, err := io.Copy(fh, resp.Body)
+	if err != nil {
+		return err
+	}
+	log.Debugf("Wrote %d bytes", written)
+
+	return err
 }
 
 func GETRequestJSON(path string) ([]byte, error) {

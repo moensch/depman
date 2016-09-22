@@ -155,5 +155,23 @@ func RouteDefinitions() Routes {
 			"/v1/{ns}/lib/{library}/versions/{version}/files/{platform}/{arch}/{type}/{name}/upload",
 			HandleFileUpload,
 		},
+		Route{
+			"GetExtraFile",
+			"GET",
+			"/v1/{ns}/extra/{name}/{version}",
+			HandleGetExtraFile,
+		},
+		Route{
+			"DownloadExtraFile",
+			"GET",
+			"/v1/{ns}/extra/{name}/{version}/download",
+			HandleDownloadExtraFile,
+		},
+		Route{
+			"UploadExtraFile",
+			"PUT",
+			"/v1/{ns}/extra/{name}/{version}/upload",
+			HandleUploadExtraFile,
+		},
 	}
 }

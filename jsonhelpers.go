@@ -60,7 +60,7 @@ func SendErrorResponse(w http.ResponseWriter, r *http.Request, err_resp error) {
 func SendTEXTResponse(w http.ResponseWriter, code int, resp string) {
 	w.Header().Set("Content-Type", "text/plain; charset=UTF-8")
 	w.WriteHeader(code)
-	fmt.Fprint(w, resp)
+	fmt.Fprintf(w, "%s\n", resp)
 }
 
 func SendJSONResponse(w http.ResponseWriter, code int, resp string) {

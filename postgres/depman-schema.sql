@@ -10,6 +10,7 @@ CREATE TABLE files (
   "type" filetype,
   "platform" character varying(10),
   "arch" character varying(10),
+  "info" text NOT NULL DEFAULT '',
   "created" timestamp with time zone DEFAULT ('now'::text)::timestamp(6) with time zone
 );
 
@@ -25,3 +26,14 @@ CREATE TABLE filelinks (
 CREATE INDEX filelinks_file_id_idx ON filelinks(file_id);
 CREATE UNIQUE INDEX filelinks_file_name_idx ON filelinks(file_id, name);
 
+
+CREATE TABLE extrafiles (
+  "extrafile_id" SERIAL PRIMARY KEY,
+  "version" character varying(255) NOT NULL,
+  "ns" character varying(255) NOT NULL,
+  "name" character varying(255) NOT NULL,
+  "info" text NOT NULL DEFAULT '',
+  "created" timestamp with time zone DEFAULT ('now'::text)::timestamp(6) with time zone
+);
+
+CREATE UNIQUE INDEX extrafiles_unique_idx ON extrafiles(name, ns, version);

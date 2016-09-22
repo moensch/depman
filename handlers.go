@@ -144,6 +144,8 @@ func HandlePutLink(w http.ResponseWriter, r *http.Request) {
 	reqVars := mux.Vars(r)
 	logRequest(reqVars, "Add Link")
 
+	linkname := reqVars["linkname"]
+	delete(reqVars, "linkname")
 	files, err := GetFilesByFilter(reqToFilter(reqVars))
 
 	if err != nil {
@@ -158,7 +160,7 @@ func HandlePutLink(w http.ResponseWriter, r *http.Request) {
 
 	fl := &FileLink{}
 	fl.FileId = files[0].Id
-	fl.Name = reqVars["linkname"]
+	fl.Name = linkname
 	err = fl.Store()
 
 	if err != nil {
@@ -245,14 +247,7 @@ func HandleFileDownload(w http.ResponseWriter, r *http.Request) {
 	reqVars := mux.Vars(r)
 	logRequest(reqVars, "File Download")
 
-	files, err := GetFilesByFilter(map[string]interface{}{
-		"library":  reqVars["library"],
-		"version":  reqVars["version"],
-		"platform": reqVars["platform"],
-		"arch":     reqVars["arch"],
-		"type":     reqVars["type"],
-		"name":     reqVars["name"],
-	})
+	files, err := GetFilesByFilter(reqToFilter(reqVars))
 
 	if err != nil {
 		SendErrorResponse(w, r, err)
@@ -312,4 +307,109 @@ func HandlePutFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	SendResponse(w, r, file)
+}
+
+func HandleGetExtraFile(w http.ResponseWriter, r *http.Request) {
+	reqVars := mux.Vars(r)
+	logRequest(reqVars, "Get Extrafile")
+
+	file, err := GetExtraFileByFilter(reqToFilter(reqVars))
+
+	if err != nil {
+		SendErrorResponse(w, r, err)
+		return
+	}
+
+	SendResponse(w, r, file)
+}
+
+func HandleDownloadExtraFile(w http.ResponseWriter, r *http.Request) {
+	reqVars := mux.Vars(r)
+	logRequest(reqVars, "Download Extrafile")
+
+	file, err := GetExtraFileByFilter(reqToFilter(reqVars))
+	switch {
+	case err != nil && err == ErrNotFound:
+		log.Debugf("No files found - try default namespace %s", DefaultNS)
+		reqVars["ns"] = DefaultNS
+		file, err = GetExtraFileByFilter(reqToFilter(reqVars))
+
+		if err != nil {
+			SendErrorResponse(w, r, err)
+			return
+		}
+	case err != nil:
+		SendErrorResponse(w, r, err)
+		return
+	}
+
+	fh, err := os.Open(file.FilePath())
+	defer fh.Close()
+	if err != nil {
+		SendErrorResponse(w, r, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/octet-stream")
+	written, err := io.Copy(w, fh)
+
+	if err != nil {
+		SendErrorResponse(w, r, err)
+		return
+	}
+	log.Debugf("Wrote %d bytes", written)
+}
+
+func HandleUploadExtraFile(w http.ResponseWriter, r *http.Request) {
+	reqVars := mux.Vars(r)
+	logRequest(reqVars, "Upload Extrafile")
+
+	file, err := GetExtraFileByFilter(reqToFilter(reqVars))
+
+	switch {
+	case err != nil && err == ErrNotFound:
+		// Create the file in the database
+		log.Debug("File not found, storing")
+		file = NewExtraFileFromVars(reqVars)
+		err = file.Store()
+		if err != nil {
+			SendErrorResponse(w, r, err)
+			return
+		}
+	case err != nil:
+		SendErrorResponse(w, r, err)
+		return
+	default:
+		log.Debugf("Found file: %d", file.Id)
+	}
+
+	log.Infof("Storing file at %s", file.FilePath())
+
+	_, err = os.Stat(file.FilePath())
+	if err == nil {
+		log.Debug("File exists - removing")
+		os.Remove(file.FilePath())
+	}
+
+	err = os.MkdirAll(filepath.Dir(file.FilePath()), 0700)
+	if err != nil {
+		SendErrorResponse(w, r, err)
+		return
+	}
+
+	localfile, err := os.OpenFile(file.FilePath(), os.O_WRONLY|os.O_CREATE, 0600)
+	defer localfile.Close()
+	if err != nil {
+		SendErrorResponse(w, r, err)
+		return
+	}
+
+	written, err := io.Copy(localfile, r.Body)
+	if err != nil {
+		SendErrorResponse(w, r, err)
+		return
+	}
+	log.Debugf("Wrote %d bytes", written)
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, "Stored")
 }
