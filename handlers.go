@@ -158,6 +158,18 @@ func HandlePutLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	links, err := files[0].GetLinks()
+
+	for _, link := range links {
+		if link.Name == linkname {
+			log.Debugf("File link already exists - not creating")
+
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, "Stored")
+			return
+		}
+	}
+
 	fl := &FileLink{}
 	fl.FileId = files[0].Id
 	fl.Name = linkname
