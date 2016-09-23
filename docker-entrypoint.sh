@@ -4,7 +4,7 @@ if [ "${1:0:1}" = '-' ]; then
 fi
 
 if [ "$1" = 'depman-srv' ]; then
-  /depman-srv -l $LISTEN -d $LOGLEVEL -s $STOREDIR
+  /depman-srv -l $LISTEN -n $NAMESPACE -d $LOGLEVEL -s $STOREDIR
 fi
 
 exec "$@"

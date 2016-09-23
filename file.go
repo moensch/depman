@@ -124,15 +124,18 @@ func GetLatestVersion(filter map[string]interface{}, table string) (string, erro
 	return version, err
 }
 
-func GetFilesByFilter(filter map[string]interface{}) (Files, error) {
+func GetFilesByFilter(filter map[string]interface{}, find_version bool) (Files, error) {
 	files := Files{}
 
-	if _, ok := filter["version"]; ok {
-		// Got version
-		log.Debug("Have to find latest version")
-		ver, err := GetLatestVersion(filter, "files")
-		if err == nil {
-			filter["version"] = ver
+	if find_version {
+		if _, ok := filter["version"]; ok {
+			// Got version
+			log.Debug("Have to find latest version")
+			ver, err := GetLatestVersion(filter, "files")
+			if err == nil {
+				filter["version"] = ver
+			}
+			log.Debugf("Found latest version: %s", filter["version"])
 		}
 	}
 	query := `SELECT file_id, library, version, ns, name, type, platform, arch, info, created

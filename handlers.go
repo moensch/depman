@@ -89,7 +89,7 @@ func HandleListFiles(w http.ResponseWriter, r *http.Request) {
 	reqVars := mux.Vars(r)
 	logRequest(reqVars, "List Files")
 
-	files, err := GetFilesByFilter(reqToFilter(reqVars))
+	files, err := GetFilesByFilter(reqToFilter(reqVars), true)
 
 	switch {
 	case err != nil && err == ErrNotFound:
@@ -97,7 +97,7 @@ func HandleListFiles(w http.ResponseWriter, r *http.Request) {
 	case err == nil && len(files) == 0:
 		log.Debugf("No files found - try default namespace %s", DefaultNS)
 		reqVars["ns"] = DefaultNS
-		files, err = GetFilesByFilter(reqToFilter(reqVars))
+		files, err = GetFilesByFilter(reqToFilter(reqVars), true)
 
 		if err != nil {
 			SendErrorResponse(w, r, err)
@@ -119,7 +119,7 @@ func HandleGetFileLinks(w http.ResponseWriter, r *http.Request) {
 	reqVars := mux.Vars(r)
 	logRequest(reqVars, "Get Links")
 
-	files, err := GetFilesByFilter(reqToFilter(reqVars))
+	files, err := GetFilesByFilter(reqToFilter(reqVars), true)
 	if err != nil {
 		SendErrorResponse(w, r, err)
 		return
@@ -146,7 +146,7 @@ func HandlePutLink(w http.ResponseWriter, r *http.Request) {
 
 	linkname := reqVars["linkname"]
 	delete(reqVars, "linkname")
-	files, err := GetFilesByFilter(reqToFilter(reqVars))
+	files, err := GetFilesByFilter(reqToFilter(reqVars), false)
 
 	if err != nil {
 		SendErrorResponse(w, r, err)
@@ -188,7 +188,7 @@ func HandleFileUpload(w http.ResponseWriter, r *http.Request) {
 	reqVars := mux.Vars(r)
 	logRequest(reqVars, "File Upload")
 
-	files, err := GetFilesByFilter(reqToFilter(reqVars))
+	files, err := GetFilesByFilter(reqToFilter(reqVars), false)
 
 	var file File
 
@@ -259,7 +259,7 @@ func HandleFileDownload(w http.ResponseWriter, r *http.Request) {
 	reqVars := mux.Vars(r)
 	logRequest(reqVars, "File Download")
 
-	files, err := GetFilesByFilter(reqToFilter(reqVars))
+	files, err := GetFilesByFilter(reqToFilter(reqVars), true)
 
 	if err != nil {
 		SendErrorResponse(w, r, err)

@@ -4,7 +4,8 @@ ADD docker-entrypoint.sh /docker-entrypoint.sh
 EXPOSE 8082
 ENV LISTEN="0.0.0.0:8082" \
     LOGLEVEL="debug" \
-    STOREDIR="/tmp/depman_files"
+    STOREDIR="/depman_data" \
+    NAMESPACE="master"
 
 VOLUME /tmp/depman_files
 
