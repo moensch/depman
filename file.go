@@ -134,8 +134,8 @@ func GetFilesByFilter(filter map[string]interface{}, find_version bool) (Files, 
 			ver, err := GetLatestVersion(filter, "files")
 			if err == nil {
 				filter["version"] = ver
+				log.Debugf("Found latest version: %s", filter["version"])
 			}
-			log.Debugf("Found latest version: %s", filter["version"])
 		}
 	}
 	query := `SELECT file_id, library, version, ns, name, type, platform, arch, info, created

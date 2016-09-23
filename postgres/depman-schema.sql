@@ -1,5 +1,5 @@
 
-CREATE TYPE filetype AS ENUM ('header', 'archive', 'shared');
+CREATE TYPE filetype AS ENUM ('header', 'archive', 'shared', 'object');
 
 CREATE TABLE files (
   "file_id" SERIAL PRIMARY KEY,

@@ -261,10 +261,23 @@ func HandleFileDownload(w http.ResponseWriter, r *http.Request) {
 
 	files, err := GetFilesByFilter(reqToFilter(reqVars), true)
 
-	if err != nil {
+	switch {
+	case err != nil && err == ErrNotFound:
+		fallthrough
+	case err == nil && len(files) == 0:
+		log.Debugf("No files found - try default namespace %s", DefaultNS)
+		reqVars["ns"] = DefaultNS
+		files, err = GetFilesByFilter(reqToFilter(reqVars), true)
+
+		if err != nil {
+			SendErrorResponse(w, r, err)
+			return
+		}
+	case err != nil:
 		SendErrorResponse(w, r, err)
 		return
 	}
+
 	if len(files) == 0 {
 		SendErrorResponse(w, r, ErrNotFound)
 		return
