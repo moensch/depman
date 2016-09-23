@@ -26,7 +26,7 @@ func NewServer() (*DepMan, error) {
 	depman := &DepMan{}
 	var err error
 	// TODO: Pull from config or some such
-	dbconn, err = sql.Open("postgres", "user=depman password=depman dbname=depman host=127.0.0.1 port=5432 sslmode=disable")
+	dbconn, err = sql.Open("postgres", "user=depman password=depman dbname=depman host=postgres port=5432 sslmode=disable")
 	if err != nil {
 		log.Fatal(err)
 	}
