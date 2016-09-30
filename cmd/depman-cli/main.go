@@ -763,7 +763,12 @@ func makeFlags(libnames []string) {
 
 	fmt.Printf("DEPMAN_LIB_DIR = %s\n", libDirAbs)
 	fmt.Printf("DEPMAN_INC_DIR = %s\n", includeDirAbs)
-	fmt.Printf("DEPMAN_LIBS = -l%s\n", strings.Join(dedupeStringSlice(libnames), " \\\n\t-l"))
+	libnames = dedupeStringSlice(libnames)
+	if len(libnames) > 0 {
+		fmt.Printf("DEPMAN_LIBS = -l%s\n", strings.Join(libnames, " \\\n\t-l"))
+	} else {
+		fmt.Print("DEPMAN_LIBS =\n")
+	}
 	fmt.Printf("DEPMAN_CFLAGS = -I$(DEPMAN_INC_DIR)\n")
 	fmt.Printf("DEPMAN_CCLDFLAGS = -L$(DEPMAN_LIB_DIR) $(DEPMAN_LIBS)")
 	fmt.Printf("\n")
